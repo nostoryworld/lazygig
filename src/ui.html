@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LazyGig — Your Overnight Gig Scout</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:#070b16; color:#e8ecf4; min-height:100vh; padding:24px 16px 80px; }
+  .wrap { max-width:760px; margin:0 auto; }
+  header { text-align:center; margin:28px 0 8px; }
+  h1 { font-size:40px; font-weight:800; letter-spacing:-1px; }
+  h1 .moon { margin-right:8px; }
+  .tag { color:#9aa6bd; font-size:17px; margin-top:6px; }
+  .panel { background:#101828; border:1px solid #1d2942; border-radius:18px; padding:24px; margin-top:22px; }
+  .scanbtn { display:block; width:100%; background:#2563eb; color:#fff; border:none; font-size:19px; font-weight:700; padding:18px; border-radius:14px; cursor:pointer; }
+  .scanbtn:disabled { background:#1d2942; color:#5b6b87; cursor:wait; }
+  .summary { display:none; text-align:center; font-size:18px; color:#c4cddd; margin-top:18px; line-height:1.6; }
+  .summary b { color:#fff; }
+  .boards { display:flex; gap:10px; justify-content:center; margin-top:14px; flex-wrap:wrap; }
+  .boardtag { font-size:13px; color:#8b98b3; background:#0b1120; border:1px solid #1d2942; padding:6px 14px; border-radius:999px; }
+  #results { margin-top:8px; }
+  .card { background:#101828; border:1px solid #1d2942; border-radius:18px; padding:22px; margin-top:18px; }
+  .card.approved { border-color:#1e7a44; }
+  .card.skipped { opacity:.45; }
+  .chead { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+  .ctitle { font-size:20px; font-weight:700; line-height:1.35; }
+  .meta { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .pill { font-size:13px; font-weight:700; padding:5px 14px; border-radius:999px; }
+  .pill.board { background:#16233d; color:#7aa5ff; border:1px solid #25407a; }
+  .pill.pay { background:rgba(40,180,90,.12); color:#4ade80; border:1px solid rgba(40,180,90,.35); }
+  .pill.pay.low { background:rgba(220,150,60,.12); color:#f5b04c; border-color:rgba(220,150,60,.35); }
+  .score { margin-top:14px; }
+  .score .lbl { font-size:14px; color:#9aa6bd; display:flex; justify-content:space-between; margin-bottom:6px; }
+  .bar { height:10px; background:#0b1120; border-radius:6px; overflow:hidden; }
+  .bar i { display:block; height:100%; border-radius:6px; background:linear-gradient(90deg,#2563eb,#4ade80); }
+  .why { margin-top:12px; font-size:15px; color:#c4cddd; font-style:italic; }
+  details { margin-top:14px; }
+  details summary { cursor:pointer; color:#7aa5ff; font-size:15px; font-weight:600; }
+  .draft { margin-top:10px; background:#0b1120; border:1px solid #1d2942; border-radius:12px; padding:14px 16px; font-size:15px; line-height:1.65; color:#dbe2f0; white-space:pre-wrap; }
+  .actions { display:flex; gap:10px; margin-top:16px; }
+  .actions button { flex:1; padding:13px; border-radius:12px; font-size:16px; font-weight:700; cursor:pointer; border:1px solid #1d2942; }
+  .btn-approve { background:#15803d; color:#fff; border:none; }
+  .btn-skip { background:transparent; color:#9aa6bd; }
+  .done { text-align:center; color:#4ade80; font-weight:700; margin-top:16px; display:none; }
+  .empty { text-align:center; color:#5b6b87; margin-top:40px; font-size:16px; line-height:1.7; }
+  footer { text-align:center; margin-top:44px; color:#4d5c78; font-size:13px; letter-spacing:1px; }
+  .err { background:rgba(220,60,60,.1); border:1px solid rgba(220,60,60,.35); color:#f0b4b4; border-radius:12px; padding:14px 18px; margin-top:18px; font-size:15px; display:none; }
+  .spinner { display:inline-block; width:18px; height:18px; border:3px solid #5b6b87; border-top-color:#fff; border-radius:50%; animation:spin 1s linear infinite; vertical-align:-3px; margin-right:8px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="moon">🌙</span>LazyGig</h1>
+    <div class="tag">Your overnight gig scout. It watches the boards while you sleep —<br>you just tap approve on the drafts.</div>
+  </header>
+
+  <div class="panel">
+    <button class="scanbtn" id="scanBtn" onclick="runScan()">🌙 Run overnight scan</button>
+    <div class="summary" id="summary"></div>
+    <div class="boards" id="boards"></div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div id="results"></div>
+  <div class="done" id="doneMsg"></div>
+
+  <footer>LAZYGIG · OPEN-WEIGHT AI ON CLOUDFREE WORKERS · DEV HACKTOBERFEST WEEK 3</footer>
+</div>
+
+<script>
+let lastResult = null;
+
+async function runScan() {
+  const btn = document.getElementById('scanBtn');
+  const err = document.getElementById('err');
+  err.style.display = 'none';
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Scanning boards &amp; ranking with open-weight AI…';
+  try {
+    const r = await fetch('/api/scan', {method: 'POST'});
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'scan failed');
+    lastResult = data;
+    render(data);
+  } catch (e) {
+    err.textContent = 'Scan failed: ' + e.message;
+    err.style.display = 'block';
+  }
+  btn.disabled = false;
+  btn.textContent = '🌙 Run overnight scan';
+}
+
+function render(data) {
+  const s = document.getElementById('summary');
+  const drafts = data.matches.filter(m => m.draft).length;
+  s.innerHTML = `While you slept: <b>${data.scanned}</b> gigs scanned · <b>${data.matches.length}</b> matches · <b>${drafts}</b> drafts ready` +
+    (data.cached ? ' <span style="color:#5b6b87">(cached)</span>' : '');
+  s.style.display = 'block';
+  document.getElementById('boards').innerHTML =
+    Object.entries(data.boards).map(([k,v]) => `<span class="boardtag">${k}: ${v}</span>`).join('');
+
+  const box = document.getElementById('results');
+  if (!data.matches.length) {
+    box.innerHTML = `<div class="empty">No genuine matches this run.<br>LazyGig would rather show you nothing than waste your morning. 😴</div>`;
+    return;
+  }
+  box.innerHTML = data.matches.map(m => `
+    <div class="card ${m.decision || ''}" id="card-${cssId(m.id)}">
+      <div class="chead"><div class="ctitle">${esc(m.title)}</div></div>
+      <div class="meta">
+        <span class="pill board">${esc(m.board)}</span>
+        <span class="pill pay ${m.rate === 'in-range' ? '' : 'low'}">${esc(m.amount)}</span>
+        ${m.category ? `<span class="pill board">${esc(m.category)}</span>` : ''}
+      </div>
+      <div class="score">
+        <div class="lbl"><span>Skill match</span><span><b>${m.score}</b>/100</span></div>
+        <div class="bar"><i style="width:${m.score}%"></i></div>
+      </div>
+      <div class="why">“${esc(m.why)}”</div>
+      ${m.draft ? `<details><summary>📝 Draft application (tap to review)</summary><div class="draft">${esc(m.draft)}</div></details>` : ''}
+      <div class="actions">
+        <button class="btn-approve" onclick="decide('${escAttr(m.id)}','approved')">✓ Approve draft</button>
+        <button class="btn-skip" onclick="decide('${escAttr(m.id)}','skipped')">Skip</button>
+      </div>
+    </div>`).join('');
+  updateDone();
+}
+
+async function decide(id, decision) {
+  await fetch('/api/decision', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({gigId:id, decision})});
+  const card = document.getElementById('card-' + cssId(id));
+  if (card) { card.classList.remove('approved','skipped'); card.classList.add(decision); }
+  const m = lastResult && lastResult.matches.find(x => x.id === id);
+  if (m) m.decision = decision;
+  updateDone();
+}
+
+function updateDone() {
+  const n = lastResult ? lastResult.matches.filter(m => m.decision === 'approved').length : 0;
+  const d = document.getElementById('doneMsg');
+  if (n > 0) { d.style.display = 'block'; d.textContent = `✓ ${n} draft${n>1?'s':''} approved — ready to send when you are.`; }
+  else d.style.display = 'none';
+}
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escAttr(s){ return esc(s).replace(/`/g,''); }
+function cssId(s){ return String(s).replace(/[^a-zA-Z0-9_-]/g,'_'); }
+</script>
+</body>
+</html>
