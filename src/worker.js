@@ -80,6 +80,7 @@ async function aiJson(env, prompt, maxTokens) {
   const out = await env.AI.run(AI_MODEL, {
     messages: [{ role: "user", content: prompt }],
     max_tokens: maxTokens || 2500,
+    temperature: 0.1,
   });
   const text = out.response || "";
   const m = text.match(/\[[\s\S]*\]/);
